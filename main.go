@@ -1,19 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
 
 var PORT = os.Args[1]
-var TOC_DIR string = "./toc"
-var TOC_TEMPLATE string = "<h1>?</h1><div>?</div>"
+var TOC_TEMPLATE string = "<style> * { font-family: sans-serif; } body { padding: 0; margin: 0; } h1 { font-size: 60px; } a { text-decoration: none; color: black; font-size: 25px; } a:hover { color: #005288; } #container { height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }</style><div id='container'><div><h1>?</h1></div><div><ul>?</ul></div><div>"
 
 func GenerateFromTemplate(header string, list string) string {
 	r1 := strings.Replace(TOC_TEMPLATE, "?", header, 1)
@@ -22,51 +22,32 @@ func GenerateFromTemplate(header string, list string) string {
 	return r2
 }
 
-func ParseToc(title string) (*Directory, error) {
-	f, err := os.Open(TOC_DIR)
+func ParseToc(title string, path string) (*Directory, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, errors.New("unable to read toc file")
 	}
 
-	finf, err := f.Stat()
-	if err != nil {
-		return nil, errors.New("unable to read file size")
-	}
+	buf := bytes.NewBuffer([]byte{})
+	buf.ReadFrom(f)
 
-	fsiz := finf.Size()
-	toc := make([]byte, fsiz)
-	f.Read(toc)
-
-	itms := strings.SplitN(string(toc), "\n", -1)
-
-	var itmslc []Item
-	for _, v := range itms {
-		itm := strings.SplitN(v, "::", -1)
-		if len(itm) != 4 {
-			fmt.Printf("item does not conform to struct, skipping: '%v'\n", v)
-			break
-		}
-
-		islocal, _ := strconv.ParseBool(itm[2])
-		hasssl, _ := strconv.ParseBool(itm[3])
-
-		itmslc = append(itmslc, Item{
-			Title:   itm[0],
-			URL:     itm[1],
-			isLocal: islocal,
-			hasSSL:  hasssl,
-		})
+	var itms []Item
+	e1 := json.Unmarshal(buf.Bytes(), &itms)
+	if e1 != nil {
+		return nil, e1
 	}
 
 	return &Directory{
-		Title: title,
-		Items: itmslc,
+		Title:    title,
+		FilePath: path,
+		Items:    itms,
 	}, nil
 }
 
 type Directory struct {
-	Title string
-	Items []Item
+	Title    string
+	FilePath string
+	Items    []Item
 }
 
 func (d *Directory) toHTMLList() string {
@@ -79,15 +60,22 @@ func (d *Directory) toHTMLList() string {
 	return str
 }
 
-func (d *Directory) addItem(i Item) {
+func (d *Directory) addItem(i Item) error {
+	f, err := os.OpenFile(d.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 770)
+	defer f.Close()
+	if err != nil {
+		return err
+	}
+
+	itm := fmt.Sprintf("%s::%s::%s::%s\n", i.Title, i.URL)
+	f.Write([]byte(itm))
 	d.Items = append(d.Items, i)
+	return nil
 }
 
 type Item struct {
-	Title   string
-	URL     string
-	isLocal bool
-	hasSSL  bool
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
 func (i *Item) toHTMLListItem() string {
@@ -96,9 +84,8 @@ func (i *Item) toHTMLListItem() string {
 
 func logRequest(r *http.Request) {
 	log, err := os.OpenFile("./access.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 770)
-	defer log.Close()
 	if err != nil {
-		fmt.Printf("there was an error opening the log file: %s\n", err)
+		fmt.Printf("there was an issue opening the log file: %s\n", err)
 		return
 	}
 
@@ -108,9 +95,9 @@ func logRequest(r *http.Request) {
 }
 
 func main() {
-	dir, err := ParseToc("Dash")
+	dir, err := ParseToc("Dash", "./toc.json")
 	if err != nil {
-		log.Fatal("unable to parse toc, exiting...")
+		log.Fatal(err)
 	}
 
 	http.HandleFunc("/dash", func(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +105,20 @@ func main() {
 		res := GenerateFromTemplate(dir.Title, dir.toHTMLList())
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(res))
+	})
+
+	http.HandleFunc("/dash/item/new", func(w http.ResponseWriter, r *http.Request) {
+		logRequest(r)
+		buf := bytes.NewBuffer([]byte{})
+		buf.ReadFrom(r.Body)
+
+		var itm Item
+		json.Unmarshal(buf.Bytes(), &itm)
+		dir.addItem(itm)
+
+		js := json.RawMessage(`{ "status": "ok", "message": "successfully added new item" }`)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
 	})
 
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", PORT), nil))
