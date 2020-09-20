@@ -12,11 +12,10 @@ import (
 	"time"
 )
 
-var PORT = os.Args[1]
-var TOC_TEMPLATE string = "<style> * { font-family: sans-serif; } body { padding: 0; margin: 0; } h1 { font-size: 60px; } a { text-decoration: none; color: black; font-size: 25px; } a:hover { color: #005288; } #container { height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }</style><div id='container'><div><h1>?</h1></div><div><ul>?</ul></div><div>"
-
 func GenerateFromTemplate(header string, list string) string {
-	r1 := strings.Replace(TOC_TEMPLATE, "?", header, 1)
+	t := "<style> * { font-family: sans-serif; } body { padding: 0; margin: 0; } h1 { font-size: 60px; } a { text-decoration: none; color: black; font-size: 25px; } a:hover { color: #005288; } #container { height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }</style><div id='container'><div><h1>?</h1></div><div><ul>?</ul></div><div>"
+
+	r1 := strings.Replace(t, "?", header, 1)
 	r2 := strings.Replace(r1, "?", list, 1)
 
 	return r2
@@ -121,5 +120,5 @@ func main() {
 		w.Write(js)
 	})
 
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", PORT), nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Args[1]), nil))
 }
