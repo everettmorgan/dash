@@ -1,0 +1,2 @@
+hoppscotch::http://lab.local.ejmorgan.com/hoppscotch::true::false
+vscode::https://vs.ejmorgan.com::false::true
