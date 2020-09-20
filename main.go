@@ -33,7 +33,7 @@ func ParseToc(title string, path string) (*Directory, error) {
 	var itms []Item
 	e1 := json.Unmarshal(buf.Bytes(), &itms)
 	if e1 != nil {
-		return nil, e1
+		f.Truncate(0)
 	}
 
 	return &Directory{
@@ -59,17 +59,33 @@ func (d *Directory) toHTMLList() string {
 	return str
 }
 
-func (d *Directory) addItem(i Item) error {
-	f, err := os.OpenFile(d.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 770)
+func (d *Directory) addItem(i Item) {
+	f, err := os.OpenFile(d.FilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 770)
 	defer f.Close()
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return
 	}
 
-	itm := fmt.Sprintf("%s::%s::%s::%s\n", i.Title, i.URL)
-	f.Write([]byte(itm))
+	buf := bytes.NewBuffer([]byte{})
+	buf.ReadFrom(f)
+
+	var itms []Item
+	e1 := json.Unmarshal(buf.Bytes(), &itms)
+	if e1 != nil {
+		fmt.Println(e1)
+		return
+	}
+
+	itms = append(itms, i)
+	js, e2 := json.Marshal(itms)
+	if e2 != nil {
+		fmt.Println(e2)
+		return
+	}
+
+	f.Write(js)
 	d.Items = append(d.Items, i)
-	return nil
 }
 
 type Item struct {
