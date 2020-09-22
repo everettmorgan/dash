@@ -32,7 +32,7 @@ func parseToc(title string, path string) (*Directory, error) {
 	var itms []Item
 	e1 := json.Unmarshal(buf.Bytes(), &itms)
 	if e1 != nil {
-		f.Truncate(0)
+		log.Fatal("unable to parse toc, exiting...", buf.String())
 	}
 
 	return &Directory{
@@ -59,10 +59,10 @@ func (d *Directory) toHTMLList() string {
 }
 
 func (d *Directory) addItem(i Item) {
-	f, err := os.OpenFile(d.FilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 770)
+	f, e1 := os.OpenFile(d.FilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 770)
 	defer f.Close()
-	if err != nil {
-		fmt.Println(err)
+	if e1 != nil {
+		fmt.Println("unable to marshal toc json object, skipping...", e1)
 		return
 	}
 
@@ -70,21 +70,21 @@ func (d *Directory) addItem(i Item) {
 	buf.ReadFrom(f)
 
 	var itms []Item
-	e1 := json.Unmarshal(buf.Bytes(), &itms)
-	if e1 != nil {
-		f.Truncate(0)
+	e2 := json.Unmarshal(buf.Bytes(), &itms)
+	if e2 != nil {
+		log.Fatal("unable to parse toc, exiting...", buf.String())
 	}
 
 	itms = append(itms, i)
-	js, e2 := json.Marshal(itms)
-	if e2 != nil {
-		fmt.Println(e2)
+	js, e3 := json.Marshal(itms)
+	if e3 != nil {
+		fmt.Println("unable to marshal new item slice, skipping...", e3)
 		return
 	}
 
-	_, e3 := f.Write(js)
-	if e3 != nil {
-		fmt.Println("unable to write new item to file, skipping...")
+	_, e4 := f.Write(js)
+	if e4 != nil {
+		fmt.Println("unable to write new item to file, skipping...", e4)
 		return
 	}
 	d.Items = append(d.Items, i)
@@ -102,7 +102,7 @@ func (i *Item) toHTMLListItem() string {
 func main() {
 	dir, err := parseToc("Dash", "./toc.json")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("unable to parse toc file, exiting...", err)
 	}
 
 	http.HandleFunc("/dash", func(w http.ResponseWriter, r *http.Request) {
@@ -117,16 +117,17 @@ func main() {
 
 		var itm Item
 		json.Unmarshal(buf.Bytes(), &itm)
+
+		w.Header().Set("Content-Type", "application/json")
+
 		if itm.Title == "" && itm.URL == "" {
 			js := json.RawMessage(`{ "status": "failed", "message": "missing item title and url" }`)
-			w.Header().Set("Content-Type", "application/json")
 			w.Write(js)
 			return
 		}
 
 		dir.addItem(itm)
 		js := json.RawMessage(`{ "status": "ok", "message": "successfully added new item" }`)
-		w.Header().Set("Content-Type", "application/json")
 		w.Write(js)
 	})
 
